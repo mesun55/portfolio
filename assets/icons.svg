@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="gallery" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M3 4h8v8H3zm10 0h8v5h-8zm0 7h8v9h-8zM3 14h8v6H3z"/>
+  </symbol>
+  <symbol id="turntable" viewBox="0 0 24 24">
+    <path fill="currentColor" fill-rule="evenodd" d="M10 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/>
+    <path fill="currentColor" d="M10 8.75a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5Zm9-5.25h2v13.91l-4.29 4.3-1.42-1.42L19 16.59Z"/>
+  </symbol>
+  <symbol id="previous" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m11.71 5.71-1.42-1.42L2.59 12l7.7 7.71 1.42-1.42L6.41 13H21v-2H6.41Z"/>
+  </symbol>
+  <symbol id="next" viewBox="0 0 24 24">
+    <path fill="currentColor" d="m12.29 5.71 1.42-1.42 7.7 7.71-7.7 7.71-1.42-1.42 5.3-5.29H3v-2h14.59Z"/>
+  </symbol>
+</svg>
