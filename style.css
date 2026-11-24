@@ -54,7 +54,7 @@ main { padding: var(--top) 0 var(--bottom); min-height: 100svh; }
 .cover-name { flex: 1; display: grid; align-items: center; }
 .cover h1 { font-weight: 650; font-size: clamp(72px, min(20.2vw, 34vh), 360px); line-height: .79; letter-spacing: -.079em; }
 .cover h1 span { display: block; width: fit-content; animation: title-in .74s cubic-bezier(.18,.78,.25,1) backwards; }
-.cover h1 span + span { margin-left: .77em; animation-delay: .1s; }
+.cover h1 span + span { animation-delay: .1s; }
 .cover h1 i { font-style: normal; color: #b13739; }
 @keyframes title-in { from { opacity: 0; transform: translateY(.23em); } to { opacity: 1; transform: translateY(0); } }
 .cover-foot { display: flex; justify-content: space-between; align-items: end; gap: 22px; padding-top: 44px; }
@@ -197,3 +197,28 @@ figcaption { margin-top: 12px; }
 .dark .pdf-options a { color: var(--concrete); }
 
 .tool-name { white-space: nowrap; }
+
+/* Keep picture navigation directly below the active image in every project. */
+.image-sequence {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "picture" "controls" "caption";
+  grid-auto-rows: max-content;
+}
+.image-sequence [data-slide]:not(.slide-picture):not([hidden]) { display: contents; }
+.slide-picture { grid-area: picture; min-width: 0; }
+.slide-caption { grid-area: caption; min-width: 0; }
+.slide-controls {
+  grid-area: controls; display: flex; justify-self: center; align-items: center;
+  gap: clamp(8px, 2vw, 20px); padding: 12px 0;
+}
+.slide-controls button {
+  padding: 10px 14px; min-height: 44px;
+  background: #e9e7e4; border-radius: 3px; color: #171717;
+}
+.slide-controls button:disabled { opacity: .4; cursor: default; }
+.slide-controls output { font-variant-numeric: tabular-nums; font-size: 14px; white-space: nowrap; }
+@media (max-width: 700px) {
+  .slide-controls { gap: 6px; }
+  .slide-controls button { padding-inline: 7px; }
+}

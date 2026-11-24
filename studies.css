@@ -11,10 +11,6 @@
 .study-turnaround .study-row img {min-width:0;}
 .board-sheet {display:block;}
 .board-sheet img {width:100%;height:auto;}
-.board-controls {display:flex;align-items:center;justify-content:center;gap:20px;padding:12px 0;}
-.board-controls button {padding:10px 14px;background:#e9e7e4;border-radius:3px;color:#171717;}
-.board-controls button:disabled {opacity:.4;cursor:default;}
-.board-controls output {font-variant-numeric:tabular-nums;font-size:14px;}
 @media(max-width:560px){.study-row {flex-wrap:wrap;} .study-row img {min-width:24%;} .hotel-credit .role-line b {display:block;} }
 
 #level-panel { margin-block: 1.4rem 3rem; }
@@ -22,11 +18,21 @@
 .level-choices button { border-bottom: 2px solid transparent; padding: .65rem 0; line-height: 1.5; font-size: .95rem; }
 .level-choices button[aria-pressed="true"] { border-color: var(--black); font-weight: 650; }
 #level-panel h3 { font-size: clamp(1.5rem, 3vw, 2.75rem); margin: 1.6rem 0 1.1rem; font-weight: 550; }
-#level-route .route-controls { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; margin: 0 0 .75rem; }
-.route-controls button { min-height: 44px; padding: .5rem .9rem; border: 1px solid var(--concrete); border-radius: 3px; }
-.route-controls button:hover { background: #e9e7e4; }
-.route-controls output { min-width: 4ch; text-align: center; font-variant-numeric: tabular-nums; }
-#level-route .route-stop img { aspect-ratio: 2.2; max-height: 68svh; object-fit: contain; background: var(--black); }
+#route-slides {
+  grid-template-columns: 50% minmax(0, 1fr);
+  grid-template-areas: "picture caption" "controls caption" ". caption";
+  grid-template-rows: max-content max-content 1fr;
+  column-gap: clamp(16px, 3vw, 48px);
+  align-content: start;
+}
+#level-route .route-stop img { width: 100%; aspect-ratio: 2.2; max-height: 34svh; object-fit: contain; background: var(--black); }
+#level-route .slide-caption { align-self: start; }
+@media (min-width: 701px) {
+  #route-slides .slide-controls { justify-self: end; }
+}
+@media (max-width: 700px) {
+  #route-slides { grid-template-columns: 25% 50% 25%; grid-template-areas: ". picture ." ". controls ." "caption caption caption"; column-gap: 0; }
+}
 #level-route dl { max-width: 65ch; }
 #level-panel img { width: 100%; height: auto; }
 .route-stop h4 { margin: .85rem 0 0; font-size: 1.25rem; }

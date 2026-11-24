@@ -98,25 +98,6 @@
     media.querySelectorAll('[data-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===mode)));
   }
   if (level) {
-    const route = level.querySelector('#level-route');
-    const stops = Array.from(route.querySelectorAll('.route-stop'));
-    const position = route.querySelector('output');
-    let currentStop = 0;
-
-    function moveStop(step) {
-      stops[currentStop].hidden = true;
-      currentStop = (currentStop + step + stops.length) % stops.length;
-      stops[currentStop].hidden = false;
-      position.textContent = (currentStop + 1) + ' / ' + stops.length;
-    }
-    route.querySelectorAll('[data-route-step]').forEach(button => {
-      button.addEventListener('click', () => moveStop(Number(button.dataset.routeStep)));
-    });
-    route.addEventListener('keydown', event => {
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      event.preventDefault();
-      moveStop(event.key === 'ArrowLeft' ? -1 : 1);
-    });
     const choices = level.querySelectorAll('[data-level-view]');
     choices.forEach(choice => choice.addEventListener('click', () => {
       choices.forEach(button => {
@@ -125,28 +106,6 @@
         document.getElementById(button.getAttribute('aria-controls')).hidden = !selected;
       });
     }));
-  }
-  if (board) {
-    const sheets = Array.from(board.querySelectorAll('.board-sheet'));
-    const previous = board.querySelector('[data-board-step="-1"]');
-    const next = board.querySelector('[data-board-step="1"]');
-    const counter = board.querySelector('output');
-    let current = 0;
-    function move(step) {
-      const index = Math.max(0,Math.min(sheets.length-1,current+step));
-      sheets[current].hidden = true;
-      sheets[index].hidden = false;
-      current = index;
-      counter.textContent = String(index+1).padStart(2,'0')+' / '+sheets.length;
-      previous.disabled = index===0;
-      next.disabled = index===sheets.length-1;
-    }
-    previous.addEventListener('click',()=>move(-1));
-    next.addEventListener('click',()=>move(1));
-    board.addEventListener('keydown',e=>{
-      if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
-      e.preventDefault(); move(e.key==='ArrowLeft' ? -1 : 1);
-    });
   }
   poster?.addEventListener('click',play);
   media.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>show(button.dataset.mode)));
