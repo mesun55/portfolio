@@ -9,18 +9,16 @@
   const board = media.querySelector('#board-panel');
   const level = media.querySelector('#level-panel');
   let player, dispose;
-  const scene = {
-    circus:{geometry:window.circusGeometry,title:'Eye building',yaw:3.49,pitch:.22},
-    arkaden:{geometry:window.arkadenGeometry,title:'Arkaden',yaw:.43,pitch:.72}
-  }[media.dataset.project];
-  const hotelScenes = {
+  const scenes = {
+    circus: {title:'Eye building', yaw:3.49, pitch:.22},
     window: {title:'Window', yaw:.24, pitch:.13},
     owner: {title:'Hotel owner', yaw:.12, pitch:.055},
     visitor: {title:'Visitor', yaw:.12, pitch:.055}
   };
   const pendingScripts = new Map();
   const choices = media.querySelectorAll('[data-model]');
-  let selectedModel = choices[0]?.dataset.model;
+  let selectedModel = choices[0]?.dataset.model || media.dataset.project;
+  let ready = false;
   let request = 0;
 
   function loadModel(id) {
@@ -41,28 +39,53 @@
   async function mountSelected() {
     const token = ++request;
     const id = selectedModel;
-    const selectedScene = hotelScenes[id];
     const loading = model.querySelector('[data-loading]');
+    const bar = loading.querySelector('progress');
     const error = model.querySelector('[data-load-error]');
-    if (loading) loading.hidden = !selectedScene;
-    if (error) error.hidden = true;
+    ready = false;
+    dispose?.();
+    dispose = null;
+    loading.hidden = false;
+    error.hidden = true;
+    bar.removeAttribute('value');
+    host.setAttribute('aria-busy','true');
+
+    function finish(failed) {
+      if (request !== token) return;
+      loading.hidden = true;
+      error.hidden = !failed;
+      host.setAttribute('aria-busy','false');
+      ready = !failed;
+      if (failed) {
+        dispose?.();
+        dispose = null;
+      }
+    }
     try {
-      const options = selectedScene ? {...selectedScene, geometry:await loadModel(id)} : scene;
-      if (request !== token || model.hidden) return;
-      dispose = window.mountPortfolioScene(host,document.documentElement.lang,options);
+      // Paint the loading panel before parsing cached geometry on the main thread.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (request !== token) return;
+      const geometry = await loadModel(id);
+      if (request !== token) return;
+      dispose = window.mountPortfolioScene(host,document.documentElement.lang,{
+        ...scenes[id], geometry,
+        onProgress(done,total) {
+          if (request !== token || !total) return;
+          bar.max = total + 1;
+          bar.value = done;
+        },
+        onReady() { finish(false); },
+        onError() { finish(true); }
+      });
     } catch (cause) {
-      if (request === token && error) error.hidden = false;
+      finish(true);
       console.error('Could not display the 3D model', cause);
-    } finally {
-      if (request === token && loading) loading.hidden = true;
     }
   }
 
   choices.forEach(button => button.addEventListener('click', () => {
     if (selectedModel === button.dataset.model) return;
     selectedModel = button.dataset.model;
-    dispose?.();
-    dispose = null;
     choices.forEach(option => option.setAttribute('aria-pressed', String(option === button)));
     model.querySelector('.model-credit').hidden = selectedModel !== 'window';
     mountSelected();
@@ -89,12 +112,17 @@
     if (film) film.hidden=mode!=='film';
     if (board) board.hidden=mode!=='board';
     if (level) level.hidden=mode!=='level';
+    const enteringModel = showModel && model?.hidden;
     if (model) model.hidden=!showModel;
     if (mode!=='film' && player) {
       player.remove(); player=null; poster.hidden=false;
     }
-    if (showModel && !dispose) mountSelected();
-    if (!showModel) request++;
+    if (showModel && !dispose && (enteringModel || !film)) mountSelected();
+    if (!showModel && !ready) {
+      request++;
+      dispose?.();
+      dispose = null;
+    }
     media.querySelectorAll('[data-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===mode)));
   }
   if (level) {

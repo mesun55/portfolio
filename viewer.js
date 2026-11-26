@@ -32,6 +32,16 @@
     const scale = item.positionScale ?? 1;
     return Float32Array.from(packed, (value, i) => value * scale + offset[i % 3]);
   }
+  // Build the normal-map axes from mesh edges and UVs, independent of the camera.
+  function textureFrame(edge1, edge2, uv, ia, ib, ic) {
+    const du1=uv[ib]-uv[ia], dv1=uv[ib+1]-uv[ia+1];
+    const du2=uv[ic]-uv[ia], dv2=uv[ic+1]-uv[ia+1];
+    const winding=Math.sign(du1*dv2-du2*dv1);
+    if (!winding) return null;
+    const tangent=unit(edge1.map((v,k) => winding*(v*dv2-edge2[k]*dv1)));
+    const bitangent=unit(edge2.map((v,k) => winding*(v*du1-edge1[k]*du2)));
+    return [...tangent,...bitangent].map(value => Math.round(value*32767));
+  }
   // Normalize each independent scene so small props and large rooms use the same orbit controls.
   const probe = typed64(window.portfolioStudioProbe, Uint8Array);
   const geometryCache = new WeakMap();
@@ -59,6 +69,7 @@
     const center = low.map((v, axis) => (v + high[axis]) / 2);
     const factor = 12 / Math.max(1, ...high.map((v, axis) => v - low[axis]));
     const interleaved = new Float32Array(indexCount * 11);
+    const frames = objects.some(group => group.normalMap) ? new Int16Array(indexCount*6) : null;
     const groups = [];
     let offset = 0;
     for (const {coords, indices, color, normals, uv, blended, texture, normalMap, ormMap, scatteringMap} of objects) {
@@ -71,7 +82,9 @@
         const length = Math.hypot(...n);
         if (!length) continue;
         const normal = n.map(x => x / length);
+        const frame = normalMap && uv && textureFrame(u,v,uv,indices[i]*2,indices[i+1]*2,indices[i+2]*2);
         for (const [corner, position] of [a, b, c].entries()) {
+          if (frame) frames.set(frame,offset/11*6);
           interleaved.set(position, offset);
           const normalIndex = indices[i + corner] * 3;
           const smoothNormal = normals?.subarray(normalIndex, normalIndex + 3);
@@ -97,7 +110,7 @@
       }
       groups.push(group);
     }
-    const result = {data: interleaved.subarray(0, offset), groups};
+    const result = {data: interleaved.subarray(0, offset), frames:frames?.subarray(0,offset/11*6), groups};
     geometryCache.set(source, result);
     return result;
   }
@@ -144,11 +157,9 @@
       width: Math.max(.1, -2*lo[0], 2*hi[0])*1.18,
       height: Math.max(.1, -2*lo[1], 2*hi[1])*1.18};
   }
-  function webglRenderer(canvas, {data, groups}) {
+  function webglRenderer(canvas, {data, frames, groups}) {
     const gl = canvas.getContext('webgl', {alpha:true,antialias:true,powerPreference:'low-power'});
     if (!gl) return null;
-    const derivatives = gl.getExtension('OES_standard_derivatives');
-    if (!derivatives && groups.some(group => group.normalMap)) throw Error('Normal maps need screen-space derivatives');
     const fragmentPrecision = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER,gl.HIGH_FLOAT)?.precision ? 'highp' : 'mediump';
     const resources = [];
     function shader(kind, source) {
@@ -161,9 +172,10 @@
     }
     const program = gl.createProgram();
     gl.attachShader(program, shader(gl.VERTEX_SHADER,`
-      attribute vec3 position, normal, color;
+      attribute vec3 position, normal, color, tangent, bitangent;
       attribute vec2 uv;
       varying ${fragmentPrecision} vec3 worldPosition, worldNormal;
+      varying mediump vec3 texTangent, texBitangent;
       varying ${fragmentPrecision} vec2 texCoord;
       varying mediump vec3 baseColor;
       uniform vec3 right, up, front, target;
@@ -177,11 +189,13 @@
         baseColor=color;
         worldPosition=position;
         worldNormal=normal;
+        texTangent=tangent;
+        texBitangent=bitangent;
       }`));
     gl.attachShader(program,shader(gl.FRAGMENT_SHADER,`
-      ${derivatives ? '#extension GL_OES_standard_derivatives : enable' : ''}
       precision ${fragmentPrecision} float;
       varying ${fragmentPrecision} vec3 worldPosition, worldNormal;
+      varying mediump vec3 texTangent, texBitangent;
       varying ${fragmentPrecision} vec2 texCoord;
       varying mediump vec3 baseColor;
       uniform sampler2D diffuse, normalMap, ormMap, scatteringMap;
@@ -199,23 +213,17 @@
       vec3 surfaceNormal(vec2 st) {
         vec3 n=normalize(worldNormal);
         float face=gl_FrontFacing ? 1.0 : -1.0;
-        ${derivatives ? `
         if (hasNormal) {
-          vec3 dx=dFdx(worldPosition), dy=dFdy(worldPosition);
-          vec2 du=dFdx(texCoord), dv=dFdy(texCoord);
-          float det=du.x*dv.y-du.y*dv.x;
-          vec3 t=(dx*dv.y-dy*du.y)*sign(det);
-          vec3 dpdv=(dy*du.x-dx*dv.x)*sign(det);
-          t-=n*dot(n,t);
-          float tangentLength=length(t);
-          if (abs(det)>1e-7 && tangentLength>1e-7) {
-            t/=tangentLength;
+          vec3 t=texTangent-n*dot(n,texTangent);
+          float lengthSquared=dot(t,t);
+          if (lengthSquared>0.000001) {
+            t*=inversesqrt(lengthSquared);
             vec3 b=cross(n,t);
-            b*=dot(b,dpdv)<0.0 ? -1.0 : 1.0;
+            b*=dot(b,texBitangent)<0.0 ? -1.0 : 1.0;
             vec3 mapped=texture2D(normalMap,st).rgb*2.0-1.0;
             return normalize(t*mapped.x-b*mapped.y+n*mapped.z)*face;
           }
-        }` : ''}
+        }
         return n*face;
       }
       vec3 fresnel(vec3 f0, float cosine) {
@@ -310,6 +318,17 @@
       gl.enableVertexAttribArray(index);
       gl.vertexAttribPointer(index,i === 3 ? 2 : 3,gl.FLOAT,false,44,12*i);
     });
+    let frameBuffer;
+    if (frames) {
+      frameBuffer=gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER,frameBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER,frames,gl.STATIC_DRAW);
+      ['tangent','bitangent'].forEach((name,i) => {
+        const index=gl.getAttribLocation(program,name);
+        gl.enableVertexAttribArray(index);
+        gl.vertexAttribPointer(index,3,gl.SHORT,true,12,i*6);
+      });
+    }
     const uniforms = ['right','up','front','target','focalLength','cameraDistance','eye','studioRotation'];
     const [right,up,front,target,focalLength,distance,eye,studioRotation] = uniforms.map(name => gl.getUniformLocation(program,name));
     const maps = [
@@ -383,6 +402,7 @@
         gl.deleteTexture(studioTexture);
         textures.forEach(t=>gl.deleteTexture(t));
         gl.deleteBuffer(buffer);
+        if (frameBuffer) gl.deleteBuffer(frameBuffer);
         gl.deleteProgram(program);
         resources.forEach(s => gl.deleteShader(s));
         gl.getExtension('WEBGL_lose_context')?.loseContext();
@@ -493,18 +513,7 @@
       out[ch]=(a+fy*(b-a))/255;
     }
   }
-  function softwareTriangleTangent(a,b,c) {
-    const du1=b[3]-a[3], dv1=b[4]-a[4], du2=c[3]-a[3], dv2=c[4]-a[4];
-    const determinant=du1*dv2-du2*dv1;
-    if (Math.abs(determinant)<1e-10) return null;
-    const sign=Math.sign(determinant);
-    const edge1=[b[0]-a[0],b[1]-a[1],a[2]-b[2]];
-    const edge2=[c[0]-a[0],c[1]-a[1],a[2]-c[2]];
-    const tangent=unit(edge1.map((v,k) => (v*dv2-edge2[k]*dv1)*sign));
-    const bitangent=unit(edge2.map((v,k) => (v*du1-edge1[k]*du2)*sign));
-    return {tangent,bitangent};
-  }
-  function softwareRenderer(canvas, {data, groups}) {
+  function softwareRenderer(canvas, {data, frames, groups}) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     const texColor=new Float32Array(4), texNormal=new Float32Array(3);
@@ -644,7 +653,15 @@
             const vertices=[vertex(i),vertex(i+11),vertex(i+22)];
             const projected=clipNear(vertices).map(project);
             if (projected.length<3) continue;
-            const tangent=material.normalMap && softwareTriangleTangent(...vertices);
+            let tangent;
+            if (material.normalMap && frames) {
+              const start=i/11*6;
+              const t=frames.subarray(start,start+3), b=frames.subarray(start+3,start+6);
+              if (t[0] || t[1] || t[2]) {
+                const cameraAxes = direction => [dot(direction,right),dot(direction,up),dot(direction,front)];
+                tangent={tangent:cameraAxes(t),bitangent:cameraAxes(b)};
+              }
+            }
             for (let j=1;j+1<projected.length;j++) {
               rasterize(projected[0],projected[j],projected[j+1],i,material,tangent);
             }
@@ -684,6 +701,10 @@
       if (!renderer) { renderer = softwareRenderer(canvas,geometry); software = true; }
     }
     if (!renderer) {
+      if (options.onError) {
+        figure.remove();
+        throw Error('3D renderer unavailable');
+      }
       hint.textContent = pick('이 기기에서는 3D 장면을 표시할 수 없습니다.','The 3D view is unavailable on this device.');
       canvas.hidden = true;
       return () => figure.remove();
@@ -692,7 +713,9 @@
     const frame = frameGeometry(geometry.data,axes(home.yaw,home.pitch));
     const state = {...home,lightAngle:0,target:[...frame.target]};
     const images = new Map(), pointers = new Map();
-    let pending = 0, disposed = false;
+    const textureUris = new Set(geometry.groups.flatMap(g => [g.texture,g.normalMap,g.ormMap,g.scatteringMap]).filter(Boolean));
+    let pending = 0, disposed = false, ready = false;
+    options.onProgress?.(0,textureUris.size);
     function draw() {
       pending = 0;
       const displayWidth = canvas.clientWidth, displayHeight = canvas.clientHeight;
@@ -702,8 +725,18 @@
       if(canvas.width!==w) canvas.width=w;
       if(canvas.height!==h) canvas.height=h;
       const basis = axes(state.yaw,state.pitch);
-      renderer.draw({...basis,lightAngle:state.lightAngle,target:state.target,distance:frame.distance,
-        focalLength:frame.distance*Math.min(w/frame.width,h/frame.height)*state.zoom,images});
+      try {
+        renderer.draw({...basis,lightAngle:state.lightAngle,target:state.target,distance:frame.distance,
+          focalLength:frame.distance*Math.min(w/frame.width,h/frame.height)*state.zoom,images});
+      } catch (cause) {
+        if (!options.onError) throw cause;
+        options.onError(cause);
+        return;
+      }
+      if (!ready && images.size === textureUris.size) {
+        ready = true;
+        options.onReady?.();
+      }
     }
     function redraw() { if(!pending && !disposed) pending=requestAnimationFrame(draw); }
     function zoom(factor) { state.zoom=clamp(state.zoom*factor,.25,12); redraw(); }
@@ -747,17 +780,24 @@
       resetButton.textContent=pick('처음 시점','Reset');
     }
     document.addEventListener('portfolio-language',localize);
-    for (const texture of new Set(geometry.groups.flatMap(g => [g.texture, g.normalMap, g.ormMap, g.scatteringMap]).filter(Boolean))) {
+    for (const texture of textureUris) {
       const image = new Image();
       image.onload = () => {
         if(disposed) return;
-        const buffer = document.createElement('canvas');
-        buffer.width=image.naturalWidth; buffer.height=image.naturalHeight;
-        const ctx = buffer.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(image,0,0);
-        images.set(texture,ctx.getImageData(0,0,buffer.width,buffer.height)); redraw();
+        try {
+          const buffer = document.createElement('canvas');
+          buffer.width=image.naturalWidth; buffer.height=image.naturalHeight;
+          const ctx = buffer.getContext('2d');
+          if (!ctx) throw Error('Texture canvas unavailable');
+          ctx.drawImage(image,0,0);
+          images.set(texture,ctx.getImageData(0,0,buffer.width,buffer.height));
+          options.onProgress?.(images.size,textureUris.size);
+          redraw();
+        } catch (cause) {
+          options.onError?.(cause);
+        }
       };
+      image.onerror = () => { if (!disposed) options.onError?.(new Error('Could not load model texture')); };
       image.src=texture;
     }
     canvas.addEventListener('pointerdown',e=>{

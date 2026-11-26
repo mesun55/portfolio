@@ -54,3 +54,13 @@
 .model-choices button[aria-pressed="true"] { border-color: currentColor; font-weight: 650; }
 .model-status { padding: 1rem 0; }
 .model-status button { text-decoration: underline; }
+
+.model-stage { position: relative; }
+#viewer-host[aria-busy="true"] { min-height: clamp(260px,58vh,640px); }
+.model-loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: #f8f7f4; background: #232422;
+}
+.model-loading-card { width: min(80%, 26rem); text-align: center; }
+.model-loading label { display: block; margin-bottom: 1rem; font-size: clamp(18px,2vw,25px); font-weight: 600; }
+.model-loading progress { display: block; width: 100%; height: 16px; accent-color: #b2c48f; }

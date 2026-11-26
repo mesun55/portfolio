@@ -7,14 +7,13 @@ document.querySelectorAll('[data-slideshow]').forEach(sequence => {
   let current = 0;
 
   function show(index) {
-    current = Math.max(0, Math.min(index, slides.length - 1));
+    current = index >= slides.length ? 0 : Math.max(0, index);
     slides.forEach((slide, i) => { slide.hidden = i !== current; });
     const format = number => String(number).padStart(2, '0');
     counter.textContent = format(current + 1) + ' / ' + format(slides.length);
     const focused = document.activeElement;
     previous.disabled = current === 0;
-    next.disabled = current === slides.length - 1;
-    if (focused === next && next.disabled) previous.focus({preventScroll:true});
+    next.disabled = slides.length < 2;
     if (focused === previous && previous.disabled) next.focus({preventScroll:true});
   }
 
